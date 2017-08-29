@@ -465,27 +465,49 @@ print_ln $ map (bitvec.to_nat ∘ subtype.val) (stream.approx 10 x)
 
 run_cmd tactic.run_io @main
 
-lemma div_lt_self
-  (x y : ℕ)
-  (h₀ : 0 < x)
-  (h₁ : 1 < y)
-: x / y < x :=
+lemma div_two_round_up
+  (x : ℕ)
+  (h₀ : 1 < x)
+: (x + 1) / 2 < x :=
 begin
-  rw [div_lt_iff_lt_mul],
-  { apply @nat.lt_of_le_of_lt _ (x*1), simp,
-    apply mul_lt_mul_of_pos_left
-    ; assumption },
-  transitivity 1,
-  assumption,
-  apply of_as_true, trivial,
+  rw [div_lt_iff_lt_mul,norm_num.mul_bit0,mul_one,bit0],
+  apply add_lt_add_left, apply h₀,
+  apply of_as_true, trivial
 end
 
 def word_size : ℕ → ℕ
- | x := sorry
+ | x :=
+if h : 1 < x then
+  have (x + 1) / 2 < x,
+    from div_two_round_up _ h,
+  succ $ word_size ((x + 1) / 2)
+else 0
+
+#eval word_size 15
+#eval 2 ^ word_size 8
 
 lemma word_size_le_two_pow (n : ℕ)
 : n ≤ 2^word_size n :=
-sorry
+begin
+  apply nat.strong_induction_on n,
+  clear n, intros n IH,
+  by_cases 1 < n with h,
+  { rw [word_size,if_pos h,pow],
+    cases n with n, { cases not_lt_zero _ h },
+    change n < _,
+    rw ← @div_lt_iff_lt_mul _ _ 2 dec_trivial,
+    have h' := div_two_round_up (succ n) h,
+    specialize IH ((succ n + 1) / 2) h', clear h h',
+    rw [succ_add,← add_succ] at *,
+    simp at *,
+    have h : (n + 2 * 1) / 2 = n / 2 + 1 :=
+       add_mul_div_left _ _ dec_trivial,
+    rw [mul_one] at h,
+    rw h at IH ⊢,
+    apply IH },
+  { rw [word_size,if_neg h,pow],
+    apply le_of_not_gt h }
+end
 
 namespace fin
 section fin
@@ -560,8 +582,10 @@ instance fin_random (n : ℕ) : random (fin (succ n)) :=
 
 section
 variable [io.interface]
-def try_random : io unit := do
+def try_fin_random : io unit := do
 x ← (io.random : io (fin 10)), print x
+x ← (io.random_r (2 : fin 10) 7 : io _), print x
 
 end
 
+run_cmd tactic.run_io @try_random
