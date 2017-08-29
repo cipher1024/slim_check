@@ -65,6 +65,11 @@ open lean.parser
 open interactive
 open interactive.types
 
+meta def time_in_nanos : tactic ℕ :=
+do time ← tactic.run_io (λ [ioi : io.interface],
+          @io.cmd ioi { cmd := "gdate", args := [ "+%s%N" ] } ),
+   pure time.to_nat
+
 local postfix `?`:9001 := optional
 local postfix *:9001 := many
 
@@ -148,7 +153,7 @@ def range {α : Type u} [has_le α] (i j : α) :=
 
 infix ` .. `:41 := range
 
-class random (α : Type u) [has_le α] :=
+class random (α : Type u) extends has_le α :=
 (random : rand α)
 (random_r : ∀ (x y : α),
               x ≤ y →
@@ -158,6 +163,70 @@ class random (α : Type u) [has_le α] :=
                         x ≤ y →
                         generator →
                         stream (x .. y))
+
+namespace tactic.interactive
+
+meta def mk_generator : tactic generator := do
+x ← time_in_nanos,
+return $ generator.from_nat32 (bitvec.of_nat 32 x)
+
+meta def tactic' (α : Type u) : Type (max u 1) := Π (β : Type), (α → tactic β) → tactic β
+
+meta def run_rand' {α : Type u} (cmd : rand α) (β : Type) (tac : α → tactic β)
+: tactic β := do
+g ← mk_generator,
+tac (cmd g).1
+
+meta def run_rand {α : Type} (cmd : rand α) : tactic α := do
+run_rand' cmd _ return
+
+section random'
+
+variables {α : Type u}
+variable [random α]
+
+meta def check_range : tactic unit :=
+assumption <|> do
+`[apply of_as_true, trivial]
+
+meta def random' : tactic' α :=
+run_rand' (random.random α)
+
+meta def random_r' (x y : α) (p : x ≤ y . check_range) : tactic' (x .. y) :=
+run_rand' (random.random_r x y p)
+
+meta def random_series' : tactic' (stream α)
+ | β cmd := do
+g ← mk_generator,
+cmd $ random.random_series α g
+
+meta def random_series_r' (x y : α) (h : x ≤ y . check_range) : tactic' (stream $ x .. y)
+ | β cmd := do
+g ← mk_generator,
+cmd $ random.random_series_r x y h g
+
+end random'
+
+section random
+
+variable {α : Type}
+variable [random α]
+
+meta def random : tactic α :=
+random' _ return
+
+meta def random_r (x y : α) (p : x ≤ y . check_range) : tactic (x .. y) :=
+random_r' _ _ p _ return
+
+meta def random_series : tactic (stream α) :=
+random_series' _ return
+
+meta def random_series_r (x y : α) (h : x ≤ y . check_range) : tactic (stream $ x .. y) :=
+random_series_r' _ _ h _ return
+
+end random
+
+end tactic.interactive
 
 instance : preorder bool :=
 { le := λ p q, p → q
@@ -198,7 +267,8 @@ stream.map bool.bool_generator.next $ random_series' g
 end bool
 
 instance : random bool :=
-{ random   := bool.get_random
+{ to_has_le := by apply_instance
+, random   := bool.get_random
 , random_r := λ x y p, bool.coerce _ _ p <$> bool.get_random
 , random_series   := bool.random_series
 , random_series_r := λ x y p g, stream.map (bool.coerce _ _ p) $ bool.random_series g }
@@ -227,7 +297,7 @@ lemma length_approx
 
 end stream
 
-def bitvec.random {n : ℕ} : rand (bitvec n) :=
+def bitvec.random (n : ℕ) : rand (bitvec n) :=
 λ g,
 let r := bool.random_series' g,
     v := map bool.bool_generator.next $ stream.approx n r in
@@ -311,17 +381,26 @@ have Hy : bitvec.of_nat n r ≤ y,
   end,
 ⟨ bitvec.of_nat _ r , Hx , Hy ⟩
 
-def bitvec.random_series {n : ℕ} (g : generator) : stream (bitvec n) :=
-let h : random bool := by apply_instance,
-    h' : has_le bool := by apply_instance in
+def bitvec.random_series (n : ℕ) (g : generator) : stream (bitvec n) :=
 stream.corec
 (λ s, ⟨ stream.approx n s, stream.length_approx _ _ ⟩)
 (stream.drop n)
-(@random.random_series bool h' _ g)
+(@random.random_series bool _ g)
 
 instance random_bitvec (n : ℕ) : random (bitvec n) :=
-{ random := bitvec.random
-, random_r := λ x y p, bitvec.coerce _ _ p <$> bitvec.random
-, random_series := bitvec.random_series
-, random_series_r := λ x y p g, bitvec.coerce _ _ p ∘ bitvec.random_series g }
+{ to_has_le := by apply_instance
+, random := bitvec.random n
+, random_r := λ x y p, bitvec.coerce _ _ p <$> bitvec.random n
+, random_series := bitvec.random_series n
+, random_series_r := λ x y p g, bitvec.coerce _ _ p ∘ bitvec.random_series n g }
 
+example : true :=
+begin
+(do x ← (tactic.interactive.random : tactic (bitvec 16)),
+    tactic.trace (x : bitvec 16).to_nat),
+(do x ← (tactic.interactive.random_series),
+    tactic.trace $ map bitvec.to_nat (stream.approx 10 x : list (bitvec 16))),
+(do x ← (tactic.interactive.random_series_r (25 : bitvec 15) 100),
+    tactic.trace $ map (bitvec.to_nat ∘ subtype.val) (stream.approx 10 x)),
+admit
+end
