@@ -3,6 +3,7 @@ import system.io
 import data.bitvec
 import data.stream
 import util.data.list
+import util.data.fin
 import system.io
 
 open list io applicative
@@ -167,9 +168,17 @@ do time ← tactic.run_io (λ [ioi : io.interface],
           @io.cmd ioi { cmd := "gdate", args := [ "+%s%N" ] } ),
    pure time.to_nat
 
-section io
+meta def check_range : tactic unit :=
+assumption <|> do
+`[apply of_as_true, trivial]
 
-def io.read_dev_random (n : ℕ) [io.interface] : io (array char n) := do
+end tactic.interactive
+
+namespace io
+
+variable [io.interface]
+
+def read_dev_random (n : ℕ) : io (array char n) := do
 fh ← mk_file_handle "/dev/random" mode.read tt,
 buf ← fs.read fh n,
 fs.close fh,
@@ -177,17 +186,43 @@ if h : buf.size = n
 then return (cast (by rw h) buf.to_array)
 else io.fail "wrong number of bytes read from /dev/random"
 
-end io
-
-meta def read_dev_random (n : ℕ) : tactic (array char n) :=
-tactic.run_io $ @io.read_dev_random n
-
 def accum_char (w : bitvec 32) (c : char) : bitvec 32 :=
 bitvec.of_nat _ c.to_nat + w.shl 8
 
-meta def mk_generator : tactic generator := do
-x ← read_dev_random 4,
+def mk_generator : io generator := do
+x ← io.read_dev_random 4,
 return $ generator.from_nat32 (foldl accum_char 0 $ x.to_list)
+
+variables {α : Type}
+
+def run_rand (cmd : rand α) : io α := do
+g ← io.mk_generator,
+return (cmd g).1
+
+variable [random α]
+
+def random : io α :=
+io.run_rand (random.random α)
+
+open tactic.interactive (check_range)
+
+def random_r (x y : α) (p : x ≤ y . check_range) : io (x .. y) :=
+io.run_rand (random.random_r x y p)
+
+def random_series : io (stream α) := do
+g ← io.mk_generator,
+return $ random.random_series α g
+
+def random_series_r (x y : α) (h : x ≤ y . check_range) : io (stream $ x .. y) := do
+g ← io.mk_generator,
+return $ random.random_series_r x y h g
+
+end io
+
+namespace tactic.interactive
+
+meta def mk_generator : tactic generator := do
+tactic.run_io @io.mk_generator
 
 meta def tactic' (α : Type u) : Type (max u 1) :=
 Π (β : Type), (α → tactic β) → tactic β
@@ -197,17 +232,10 @@ meta def run_rand' {α : Type u} (cmd : rand α) (β : Type) (tac : α → tacti
 g ← mk_generator,
 tac (cmd g).1
 
-meta def run_rand {α : Type} (cmd : rand α) : tactic α := do
-run_rand' cmd _ return
-
 section random'
 
 variables {α : Type u}
 variable [random α]
-
-meta def check_range : tactic unit :=
-assumption <|> do
-`[apply of_as_true, trivial]
 
 meta def random' : tactic' α :=
 run_rand' (random.random α)
@@ -425,3 +453,115 @@ tactic.trace "\n\n",
     tactic.trace $ map (bitvec.to_nat ∘ subtype.val) (stream.approx 10 x)),
 admit
 end
+
+meta def main [io.interface] : io unit := do
+print_ln "\n\n",
+x ← (io.random : io (bitvec 16)),
+print_ln (x : bitvec 16).to_nat,
+x ← io.random_series,
+print_ln $ map bitvec.to_nat (stream.approx 10 x : list (bitvec 16)),
+x ← (io.random_series_r (25 : bitvec 15) 100),
+print_ln $ map (bitvec.to_nat ∘ subtype.val) (stream.approx 10 x)
+
+run_cmd tactic.run_io @main
+
+lemma div_lt_self
+  (x y : ℕ)
+  (h₀ : 0 < x)
+  (h₁ : 1 < y)
+: x / y < x :=
+begin
+  rw [div_lt_iff_lt_mul],
+  { apply @nat.lt_of_le_of_lt _ (x*1), simp,
+    apply mul_lt_mul_of_pos_left
+    ; assumption },
+  transitivity 1,
+  assumption,
+  apply of_as_true, trivial,
+end
+
+def word_size : ℕ → ℕ
+ | x := sorry
+
+lemma word_size_le_two_pow (n : ℕ)
+: n ≤ 2^word_size n :=
+sorry
+
+namespace fin
+section fin
+parameter {n : ℕ}
+def w := word_size (succ n)
+
+def bitvec.to_fin (v : bitvec w) : fin (succ n) :=
+fin.of_nat v.to_nat
+
+protected def to_bitvec (v : fin (succ n)) : bitvec w :=
+bitvec.of_nat _ v.val
+
+protected def random : rand (fin (succ n)) :=
+bitvec.to_fin <$> random.random (bitvec w)
+
+protected def random_series (g : generator) : stream (fin (succ n)) :=
+stream.map bitvec.to_fin $ @random.random_series (bitvec w) _ g
+
+lemma val_lt_word_size (z : fin (succ n))
+: z.val < (2 : ℕ) ^ w :=
+lt_of_lt_of_le z.is_lt (word_size_le_two_pow _)
+
+lemma bitvec_to_nat_to_bitvec (x : fin (succ n))
+: bitvec.to_nat (fin.to_bitvec x) = x.val :=
+begin
+  rw [fin.to_bitvec,bitvec.to_nat_of_nat,mod_eq_of_lt],
+  apply val_lt_word_size
+end
+
+lemma fin_val_bitvec_to_fin
+  {x : bitvec w} (hn : x.to_nat < succ n)
+: (bitvec.to_fin x).val = x.to_nat :=
+by simp [bitvec.to_fin,fin.val_of_nat hn]
+
+protected def of_bitvec_range (x y : fin (succ n))
+: range x.to_bitvec y.to_bitvec → range x y
+ | ⟨i,hx,hy⟩ :=
+have hn : bitvec.to_nat i < nat.succ n,
+  by { rw [bitvec.le_def,bitvec_to_nat_to_bitvec] at hy,
+       apply lt_of_le_of_lt hy y.is_lt },
+have hx' : x ≤ bitvec.to_fin i,
+  by { simp [bitvec.le_def,bitvec_to_nat_to_bitvec] at hx,
+       simp [fin.le_def,fin_val_bitvec_to_fin hn,hx], },
+have hy' : bitvec.to_fin i ≤ y,
+  by { simp [bitvec.le_def,bitvec_to_nat_to_bitvec] at hy,
+       simp [fin.le_def,fin_val_bitvec_to_fin hn,hy], },
+⟨bitvec.to_fin i,hx',hy'⟩
+
+protected def random_r (x y : fin (succ n)) (p : x ≤ y) : rand (x .. y) :=
+have x.to_bitvec ≤ y.to_bitvec,
+  by { simp [bitvec.le_def,bitvec_to_nat_to_bitvec],
+       rw ← fin.le_def, apply p },
+of_bitvec_range _ _ <$> @random.random_r (bitvec w) _ _ _ this
+
+protected def random_series_r (x y : fin (succ n)) (p : x ≤ y)
+  (g : generator)
+: stream (x .. y) :=
+have x.to_bitvec ≤ y.to_bitvec,
+  by { simp [bitvec.le_def,bitvec_to_nat_to_bitvec],
+       rw ← fin.le_def, apply p },
+stream.map (of_bitvec_range _ _) $ @random.random_series_r (bitvec w) _ _ _ this g
+
+end fin
+end fin
+
+instance fin_random (n : ℕ) : random (fin (succ n)) :=
+{ to_has_le := by apply_instance
+, random := fin.random
+, random_r := λ x y p, @fin.random_r n x y p
+, random_series := fin.random_series
+, random_series_r := λ x y p, @fin.random_series_r n x y p }
+
+section
+variable [io.interface]
+def try_random : io unit := do
+x ← (io.random : io (fin 10)), print x
+
+end
+
