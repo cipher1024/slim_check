@@ -3,6 +3,7 @@ import system.io
 import data.bitvec
 import data.stream
 import util.data.list
+import system.io
 
 open list io applicative
 
@@ -64,11 +65,6 @@ open tactic
 open lean.parser
 open interactive
 open interactive.types
-
-meta def time_in_nanos : tactic ℕ :=
-do time ← tactic.run_io (λ [ioi : io.interface],
-          @io.cmd ioi { cmd := "gdate", args := [ "+%s%N" ] } ),
-   pure time.to_nat
 
 local postfix `?`:9001 := optional
 local postfix *:9001 := many
@@ -166,11 +162,35 @@ class random (α : Type u) extends has_le α :=
 
 namespace tactic.interactive
 
-meta def mk_generator : tactic generator := do
-x ← time_in_nanos,
-return $ generator.from_nat32 (bitvec.of_nat 32 x)
+meta def time_in_nanos : tactic ℕ :=
+do time ← tactic.run_io (λ [ioi : io.interface],
+          @io.cmd ioi { cmd := "gdate", args := [ "+%s%N" ] } ),
+   pure time.to_nat
 
-meta def tactic' (α : Type u) : Type (max u 1) := Π (β : Type), (α → tactic β) → tactic β
+section io
+
+def io.read_dev_random (n : ℕ) [io.interface] : io (array char n) := do
+fh ← mk_file_handle "/dev/random" mode.read tt,
+buf ← fs.read fh n,
+fs.close fh,
+if h : buf.size = n
+then return (cast (by rw h) buf.to_array)
+else io.fail "wrong number of bytes read from /dev/random"
+
+end io
+
+meta def read_dev_random (n : ℕ) : tactic (array char n) :=
+tactic.run_io $ @io.read_dev_random n
+
+def accum_char (w : bitvec 32) (c : char) : bitvec 32 :=
+bitvec.of_nat _ c.to_nat + w.shl 8
+
+meta def mk_generator : tactic generator := do
+x ← read_dev_random 4,
+return $ generator.from_nat32 (foldl accum_char 0 $ x.to_list)
+
+meta def tactic' (α : Type u) : Type (max u 1) :=
+Π (β : Type), (α → tactic β) → tactic β
 
 meta def run_rand' {α : Type u} (cmd : rand α) (β : Type) (tac : α → tactic β)
 : tactic β := do
@@ -396,6 +416,7 @@ instance random_bitvec (n : ℕ) : random (bitvec n) :=
 
 example : true :=
 begin
+tactic.trace "\n\n",
 (do x ← (tactic.interactive.random : tactic (bitvec 16)),
     tactic.trace (x : bitvec 16).to_nat),
 (do x ← (tactic.interactive.random_series),
