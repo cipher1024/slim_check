@@ -174,6 +174,8 @@ assumption <|> do
 
 end tactic.interactive
 
+export tactic.interactive (check_range)
+
 namespace io
 
 variable [io.interface]
@@ -203,8 +205,6 @@ variable [random α]
 
 def random : io α :=
 io.run_rand (random.random α)
-
-open tactic.interactive (check_range)
 
 def random_r (x y : α) (p : x ≤ y . check_range) : io (x .. y) :=
 io.run_rand (random.random_r x y p)
@@ -581,11 +581,14 @@ instance fin_random (n : ℕ) : random (fin (succ n)) :=
 , random_series_r := λ x y p, @fin.random_series_r n x y p }
 
 section
+open stream
 variable [io.interface]
 def try_fin_random : io unit := do
-x ← (io.random : io (fin 10)), print x
-x ← (io.random_r (2 : fin 10) 7 : io _), print x
+put_str_ln "",
+x ← (io.random : io (fin 10)), print_ln x,
+x ← (io.random_r (2 : fin 10) 7 : io _), print_ln (x.val),
+x ← (io.random_series : io (stream (fin 10))), print_ln $ approx 10 x
 
 end
 
-run_cmd tactic.run_io @try_random
+run_cmd tactic.run_io @try_fin_random
