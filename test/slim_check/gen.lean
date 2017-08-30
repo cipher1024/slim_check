@@ -1,6 +1,6 @@
 import ...test.random
 
-universes u
+universes u v
 
 def gen (α : Type u) := ℕ → rand α
 
@@ -57,3 +57,74 @@ instance : monad gen :=
 , bind_assoc := @gen.bind_assoc
 , pure_bind  := @gen.pure_bind
 , id_map := @gen.id_map }
+
+variable (α : Type u)
+
+section random
+
+variable [random α]
+
+def choose_any : gen α :=
+λ _, random.random α
+
+variables {α}
+
+def choose (x y : α) (p : x ≤ y . check_range) : gen (x .. y) :=
+λ _, random.random_r x y p
+
+end random
+
+open nat
+
+def choose_nat (x y : ℕ) (p : x ≤ y . check_range) : gen (x .. y) := do
+⟨z,h⟩ ← @choose (fin $ succ y) _ ⟨x,succ_le_succ p⟩ ⟨y,lt_succ_self _⟩ p,
+have h' : x ≤ z.val ∧ z.val ≤ y,
+  by { simp [fin.le_def] at h, apply h },
+return ⟨z.val,h'⟩
+
+
+open nat
+
+namespace gen
+
+variable {α}
+def up (x : gen α) : gen (ulift.{v} α) :=
+λ sz g, prod.rec_on (x sz g) (prod.mk ∘ ulift.up)
+
+def down (x : gen (ulift.{v} α)) : gen α :=
+λ sz g, prod.rec_on (x sz g) (prod.mk ∘ ulift.down)
+
+lemma up_down {α : Type u} (b : gen $ ulift.{v} α)
+: up (down b) = b :=
+begin
+  funext x y, simp [up,down],
+  destruct (b x y),
+  intros z g h, rw h,
+  change (_,_) = _,
+  rw ulift.up_down
+end
+
+lemma down_up {α : Type u} (a : gen α)
+: down (up a) = a :=
+begin
+  funext i j, simp [up,down],
+  destruct (a i j),
+  intros z g h, rw h,
+end
+
+end gen
+
+variable {α}
+
+def sized (cmd : ℕ → gen α) : gen α :=
+λ sz, cmd sz sz
+
+def vector_of : ∀ (n : ℕ) (cmd : gen α), gen (vector α n)
+ | 0 _ := return vector.nil
+ | (succ n) cmd := vector.cons <$> cmd <*> vector_of n cmd
+
+def list_of (cmd : gen α) : gen (list α) :=
+sized $ λ sz, do
+⟨ n ⟩ ← gen.up $ choose_nat 0 sz,
+v ← vector_of n.val cmd,
+return v.to_list
