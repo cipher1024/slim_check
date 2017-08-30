@@ -17,7 +17,7 @@ run_cmd tactic.run_io $ @testable.check
                                  x ∈ xs → x < n)  _
 
 example : ∀ n : ℕ, n < n+1 :=
-by expect_failure { slim_check }
+by slim_check
 
 example : 1 < (2 : ℕ) :=
 by slim_check
@@ -34,7 +34,7 @@ by expect_failure { slim_check }
 example : (∀ n m : ℕ, 2*m + n < 100) :=
 by expect_failure { slim_check }
 
-example : (∀ (n : ℤ) (xs : list ℤ) x, x ∈ xs → x < n) :=
+example : (∀ (n : ℤ) (xs : list ℤ) x, x ∈ xs → x ≤ n) :=
 by expect_failure { slim_check }
 
 example : (∀ n m : ℕ, even m → ¬ even n → ¬ even (m+n)) :=

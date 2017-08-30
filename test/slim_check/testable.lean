@@ -94,7 +94,7 @@ testable.run_suite_aux α' success 100
 def testable.check : io bool := do
 x ← io.run_rand (testable.run_suite α'),
 match x with
- | success := io.put_str_ln "Success!" >> return tt
+ | success := return tt
  | (gave_up n) := io.put_str_ln ("Gave up " ++ repr n ++ " times") >> return tt
  | (failure xs) := do
    io.put_str_ln "\n===================",

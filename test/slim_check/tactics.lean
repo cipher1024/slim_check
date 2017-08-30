@@ -11,7 +11,7 @@ match xs with
  | [] := return ()
 end
 
-meta def slim_check : tactic unit := do
+meta def slim_check : tactic unit := (do
 revert_all,
 t ← target,
 p ← is_prop t,
@@ -21,7 +21,8 @@ e ← to_expr ``(testable.run %%t),
 run ← eval_expr (gen test_result) e,
 let hinst : testable t' := ⟨ _, run ⟩,
 r ← run_io (@testable.check t' hinst),
-if r then admit else fail "found counter examples"
+if r then admit else fail "found counter examples")
+<|> fail "found counter examples"
 
 open interaction_monad.result.
 
