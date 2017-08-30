@@ -26,4 +26,9 @@ variable [arbitrary α]
 instance arbitrary_list : arbitrary (list α) :=
 ⟨ list_of (arby α) ⟩
 
+instance arbitrary_prop : arbitrary Prop :=
+{ arby := do
+  x ← choose_any bool,
+  return $ ↑x }
+
 end slim_check
