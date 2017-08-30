@@ -1,3 +1,0 @@
-[submodule "lean-lib"]
-	path = lean-lib
-	url = https://github.com/unitb/lean-lib
