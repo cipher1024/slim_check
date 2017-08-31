@@ -1,5 +1,5 @@
 
-import ...test.slim_check.gen
+import test.slim_check.gen
 
 universes u
 

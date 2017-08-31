@@ -1,5 +1,5 @@
 
-import ...test.slim_check.testable
+import test.slim_check.testable
 
 namespace tactic.interactive
 open tactic slim_check

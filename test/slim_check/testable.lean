@@ -1,5 +1,5 @@
 
-import ...test.slim_check.arbitrary
+import test.slim_check.arbitrary
 
 universes u v
 
