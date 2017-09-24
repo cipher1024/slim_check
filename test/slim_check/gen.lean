@@ -128,3 +128,10 @@ sized $ λ sz, do
 ⟨ n ⟩ ← gen.up $ choose_nat 0 sz,
 v ← vector_of n.val cmd,
 return v.to_list
+
+open ulift
+
+def one_of (xs : list (gen α)) (pos : 0 < xs.length) : gen α :=
+have _inst : random _ := random_fin_of_pos _ pos, do
+n ← gen.up $ @choose_any (fin xs.length) _inst,
+list.nth_le xs (down n).val (down n).is_lt

@@ -26,9 +26,14 @@ def even (n : ℕ) : bool :=
 n % 2 = 0
 
 section
-variables (α : Type) [has_add α] [has_one α]
+variables (α : Type)
 
-example : (∀ (xs : list α) (x ∈ xs), x ≠ (10 : α)) :=
+variables [has_add α] [has_one α]
+
+example : (∀ (xs : list α), xs ≠ [] → ∃ (x ∈ xs), x = (10 : α)) :=
+by expect_failure { slim_check }
+
+example : (∀ (xs : list α), ∃ (x ∈ xs), ∃ y ∈ xs, x ≠ y) :=
 by expect_failure { slim_check }
 
 end
@@ -37,7 +42,7 @@ example : (∀ (x ∈ [1,2,3,4]), x ≠ 10) :=
 by slim_check -- no error message or warning:
               -- slim_check actually proves the statement
 
-example : (∀ (x ∈ [1,2,3,10]), x ≠ 10) :=
+example : (∃ (x ∈ [1,2,3,9]), x = 10) :=
 by expect_failure { slim_check }
 
 example : (∀ (α : Type) (xs : list α), xs.length < 10) :=

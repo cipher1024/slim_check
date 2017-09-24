@@ -26,13 +26,6 @@ match r with
 | (interaction_monad.result.success a s) := r
 end
 
-meta def revert_all : tactic ℕ := do
-xs ← local_context,
-match xs with
- | (x :: xs) := (+) <$> tactic.revert x <*> revert_all
- | [] := return 0
-end
-
 meta def applye (e : pexpr) : tactic unit := do
 to_expr e >>= tactic.apply
 
@@ -68,9 +61,9 @@ match e with
        (  (applye ``(slim_check.test_forall_in_list _ _ %%var)  ; apply_instance)
          <|>
           (applye ``(slim_check.var_testable _ _ (some %%var)) ; apply_instance))
- | _ := tactic.applyc `slim_check.de_testable
+ | _ := trace_error $ tactic.applyc `slim_check.de_testable
 end)
-<|> tactic.applyc `slim_check.de_testable
+<|> trace_error (tactic.applyc `slim_check.de_testable)
 
 open slim_check.test_result nat
 

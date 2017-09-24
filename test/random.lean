@@ -3,13 +3,24 @@ import data.bitvec
 import data.stream
 import util.data.list
 import util.data.fin
+import util.meta.tactics
+
+import data.norm_num
+
+import algebra.group_power
+
 import system.io
 
 open list io applicative
 
+universes u v w
+
 structure generator :=
-  (seed1 : bitvec 32)
-  (seed2 : bitvec 32)
+  (seed1 : unsigned)
+  (seed2 : unsigned)
+
+instance : has_to_string generator :=
+⟨ λ ⟨x,y⟩, to_string (x,y) ⟩
 
 namespace generator
 
@@ -17,26 +28,26 @@ namespace generator
     https://hackage.haskell.org/package/random
     -/
 
-def from_nat32 (s : bitvec 32) : generator :=
+def from_nat32 (s : unsigned) : generator :=
 let s₀ := s.to_nat,
-    s₁ := bitvec.of_nat 32 $ s₀ % 2147483562,
     q  := s₀ / 2147483562,
-    s₂ := bitvec.of_nat 32 $ q % 2147483398 in
+    s₁ : unsigned := fin.of_nat $ s₀ % 2147483562,
+    s₂ : unsigned := fin.of_nat $ q % 2147483398 in
 ⟨ s₁ + 1, s₂ + 1 ⟩
 
-def next : generator → bitvec 31 × generator
-  | ⟨ s1, s2 ⟩ :=
-let k := s1.to_int / 53668,
-    s1'  := 40014 * (s1.to_int - k * 53668) - k * 12211,
+def next : generator → unsigned × generator
+  | ⟨ ⟨ s1, _⟩, ⟨ s2, _ ⟩ ⟩ :=
+let k : ℤ := s1 / 53668,
+    s1'  := 40014 * ((s1 : ℤ) - k * 53668) - k * 12211,
     s1'' := if s1' < 0 then s1' + 2147483563 else s1',
 
-    k'   := s2.to_int / 52774,
-    s2'  := 40692 * (s2.to_int - k' * 52774) - k' * 3791,
+    k' : ℤ := s2 / 52774,
+    s2'  := 40692 * ((s2 : ℤ) - k' * 52774) - k' * 3791,
     s2'' := if s2' < 0 then s2' + 2147483399 else s2',
     z    := s1'' - s2'',
     z'   := if z < 1 then z + 2147483562 else z
-in ⟨ (bitvec.of_int _ z').tail, (bitvec.of_int _ s1'').tail, (bitvec.of_int _ s2'').tail ⟩
-
+in
+⟨ fin.of_nat z'.to_nat, fin.of_nat s1''.to_nat, fin.of_nat s2''.to_nat ⟩
 
 def split : generator → generator × generator
  | ⟨ s1, s2 ⟩ :=
@@ -56,45 +67,6 @@ let    nx := (next ⟨s1,s2⟩).2,
 in ⟨ left, right ⟩
 
 end generator
-
-universes u
-
-namespace tactic.interactive
-
-open tactic
-open lean.parser
-open interactive
-open interactive.types
-
-local postfix `?`:9001 := optional
-local postfix *:9001 := many
-
-meta def unfold_local (n : parse ident) : tactic unit := do
-e ← resolve_name n >>= to_expr,
-g ← target,
-t ← infer_type e,
-v ← mk_meta_var t,
-h ← to_expr ``(%%e = (%%v : %%t)) >>= assert `h,
-solve1 (do
-  tactic.revert e,
-  g ← target,
-  match g with
-   | (expr.elet n _ e b) := tactic.change (expr.instantiate_local n e b)
-   | _ := fail $ to_string n ++ " is not a local definition"
-  end,
-  tactic.intros, refl ),
-rewrite_target h,
-tactic.clear h
-
-meta def funext1 (x : parse ident_ ?) : tactic unit := do
-`[apply funext],
-intro x
-
-meta def funext : parse ident_ * → tactic unit
- | [] := return ()
- | (x :: xs) := funext1 x >> funext xs
-
-end tactic.interactive
 
 def rand (α : Type u) := generator → α × generator
 
@@ -149,16 +121,20 @@ def range {α : Type u} [has_le α] (i j : α) :=
 
 infix ` .. `:41 := range
 
+open stream
+
 class random (α : Type u) extends has_le α :=
 (random : rand α)
 (random_r : ∀ (x y : α),
               x ≤ y →
               rand (x .. y))
-(random_series : generator → stream α)
+(random_series : generator → stream α :=
+ λ g, corec prod.fst (random ∘ prod.snd) (random g) )
 (random_series_r : ∀ (x y : α),
                         x ≤ y →
                         generator →
-                        stream (x .. y))
+                        stream (x .. y) :=
+ λ x y h g, corec prod.fst (random_r x y h ∘ prod.snd) (random_r x y h g) )
 
 namespace tactic.interactive
 
@@ -187,8 +163,8 @@ if h : buf.size = n
 then return (cast (by rw h) buf.to_array)
 else io.fail "wrong number of bytes read from /dev/random"
 
-def accum_char (w : bitvec 32) (c : char) : bitvec 32 :=
-bitvec.of_nat _ c.to_nat + w.shl 8
+def accum_char (w : unsigned) (c : char) : unsigned :=
+fin.of_nat c.to_nat + 256 * w
 
 def mk_generator : io generator := do
 x ← io.read_dev_random 4,
@@ -288,22 +264,22 @@ def coerce (x y : bool) (p : x ≤ y) (i : bool) : x .. y := do
   else ⟨ x , le_refl x , p ⟩
 
 protected def get_random : rand bool :=
-prod.map (λ v : bitvec 31, v.nth 14) id ∘ generator.next
+prod.map (λ v : unsigned, v % 2 = 1) id ∘ generator.next
 
 structure bool_generator :=
   (next : bool)
-  (queue : list bool)
+  (queue : unsigned × ℕ)
   (gen : generator)
 
 protected def first (g : generator) : bool_generator  :=
 let (r,g') := generator.next g in
-{ next := r.head
-, queue := r.tail.to_list
+{ next := r % 2 = 1
+, queue := (r / 2,30)
 , gen := g' }
 
 protected def next : bool_generator → bool_generator
- | ⟨_,[],g⟩ := bool.first g
- | ⟨_,x::xs,g⟩ := ⟨x,xs,g⟩
+ | ⟨_,(_,0),g⟩ := bool.first g
+ | ⟨_,(n,k),g⟩ := ⟨(n%2 = 1),(n/2,k-1),g⟩
 
 def random_series' (g : generator) : stream bool_generator :=
 stream.iterate bool.next (bool.first g)
@@ -329,7 +305,7 @@ lemma bitvec.le_def {n : ℕ} (x y : bitvec n)
 : x ≤ y ↔ x.to_nat ≤ y.to_nat :=
 by refl
 
-open nat
+open nat (succ one_add mod_eq_of_lt zero_lt_succ add_one succ_le_succ)
 
 namespace stream
 
@@ -354,46 +330,48 @@ have Hv : length v = n,
 
 section coerce
 
-parameters {i' r n : ℕ}
+parameters {i' n : ℕ}
 parameters {x y : bitvec n}
 
-def x' := x.to_nat
-def y' := y.to_nat
-
-parameters P' : x' ≤ y'
+parameters P' : x.to_nat ≤ y.to_nat
 include P'
 
-lemma interval_fits_in_word_size
-: x' + i' % (1 + (y' - x')) < 2^n :=
+local infix ^ := nat.pow
+
+lemma bitvec.interval_fits_in_word_size
+: x.to_nat + i' % (1 + (y.to_nat - x.to_nat)) < 2^n :=
 begin
+  let x' := x.to_nat,
+  let y' := y.to_nat,
   apply @lt_of_lt_of_le _ _ _ (x' + (y' - x' + 1)),
   { apply add_lt_add_left, simp,
     apply nat.mod_lt,
     rw one_add, apply zero_lt_succ },
   { rw [← add_assoc,← nat.add_sub_assoc P',nat.add_sub_cancel_left,add_one],
-    clear P' x i', dunfold y',
+    clear P' i',
     cases y with y Hy,
     unfold bitvec.to_nat vector.to_list subtype.val bitvec.bits_to_nat,
     rw [foldl_eq_foldr',← Hy, ← length_reverse],
-    generalize : reverse y = x,
-    clear Hy n,
-    induction x,
-    case nil
-    { unfold foldr, refl },
-    case cons x xs
+    generalize : reverse y = z,
+    clear x' x y' Hy y n,
+    induction z with x xs,
+    { rw [list.length,list.foldr,nat.pow] },
     { simp [foldr,length,one_add,pow_succ,flip,bitvec.add_lsb],
       transitivity succ (1 +
        (foldr (λ (b : bool) (a : ℕ), a + (a + cond b 1 0)) 0 xs +
           foldr (λ (b : bool) (a : ℕ), a + (a + cond b 1 0)) 0 xs)),
       { apply succ_le_succ, apply add_le_add_right,
-        cases x, apply zero_le, refl, },
-      { rw [← add_succ,← add_succ,one_add,← succ_add,← two_mul],
-        apply mul_le_mul_left,
+        cases x, apply nat.zero_le, refl, },
+      { rw [← nat.add_succ,← nat.add_succ,one_add,← nat.succ_add,← two_mul,nat.pow_succ],
+        rw [mul_comm],
+        apply nat.mul_le_mul_right,
         simp [flip,bitvec.add_lsb] at ih_1,
-        apply ih_1 } } }
+        apply ih_1 } } },
 end
 
 end coerce
+
+open nat
 
 def bitvec.coerce {n : ℕ} (x y : bitvec n) (P : x ≤ y)
   (i : bitvec n)
@@ -408,7 +386,8 @@ have Hx : x ≤ bitvec.of_nat n r,
     simp [bitvec.le_def,bitvec.to_nat_of_nat],
     rw [mod_eq_of_lt],
     { apply nat.le_add_right },
-    apply interval_fits_in_word_size,
+    unfold_locals x' y' i',
+    apply bitvec.interval_fits_in_word_size,
     apply P
   end,
 have Hy : bitvec.of_nat n r ≤ y,
@@ -424,7 +403,7 @@ have Hy : bitvec.of_nat n r ≤ y,
     { transitivity x' + (y' - x'),
       apply le_of_eq, ac_refl,
       rw [← nat.add_sub_assoc P,nat.add_sub_cancel_left], },
-    simp, apply interval_fits_in_word_size P,
+    simp, apply bitvec.interval_fits_in_word_size P,
   end,
 ⟨ bitvec.of_nat _ r , Hx , Hy ⟩
 
@@ -450,7 +429,7 @@ tactic.trace "\n\n",
     tactic.trace $ map bitvec.to_nat (stream.approx 10 x : list (bitvec 16))),
 (do x ← (tactic.interactive.random_series_r (25 : bitvec 15) 100),
     tactic.trace $ map (bitvec.to_nat ∘ subtype.val) (stream.approx 10 x)),
-admit
+trivial
 end
 
 meta def main [io.interface] : io unit := do
@@ -463,6 +442,8 @@ x ← (io.random_series_r (25 : bitvec 15) 100),
 print_ln $ map (bitvec.to_nat ∘ subtype.val) (stream.approx 10 x)
 
 run_cmd tactic.run_io @main
+
+open nat
 
 lemma div_two_round_up
   (x : ℕ)
@@ -482,8 +463,7 @@ if h : 1 < x then
   succ $ word_size ((x + 1) / 2)
 else 0
 
-#eval word_size 15
-#eval 2 ^ word_size 8
+local infix ^ := nat.pow
 
 lemma word_size_le_two_pow (n : ℕ)
 : n ≤ 2^word_size n :=
@@ -491,7 +471,7 @@ begin
   apply nat.strong_induction_on n,
   clear n, intros n IH,
   by_cases 1 < n with h,
-  { rw [word_size,if_pos h,pow],
+  { rw [word_size,if_pos h,nat.pow],
     cases n with n, { cases not_lt_zero _ h },
     change n < _,
     rw ← @div_lt_iff_lt_mul _ _ 2 dec_trivial,
@@ -511,63 +491,82 @@ end
 namespace fin
 section fin
 parameter {n : ℕ}
-def w := word_size (succ n)
 
-def bitvec.to_fin (v : bitvec w) : fin (succ n) :=
-fin.of_nat v.to_nat
+def shift_31l : ℕ :=
+by apply_normed 2^31
+#print shift_31l
 
-protected def to_bitvec (v : fin (succ n)) : bitvec w :=
-bitvec.of_nat _ v.val
+protected def random_aux : ℕ → ℕ → rand (fin (succ n))
+ | 0 k := return $ fin.of_nat k
+ | (succ n) k := do
+x ← generator.next,
+random_aux n $ x.to_nat + (k * shift_31l)
 
 protected def random : rand (fin (succ n)) :=
-bitvec.to_fin <$> random.random (bitvec w)
+let m := word_size n / 31 + 1 in
+random_aux m 0
 
-protected def random_series (g : generator) : stream (fin (succ n)) :=
-stream.map bitvec.to_fin $ @random.random_series (bitvec w) _ g
+section coerce
 
-lemma val_lt_word_size (z : fin (succ n))
-: z.val < (2 : ℕ) ^ w :=
-lt_of_lt_of_le z.is_lt (word_size_le_two_pow _)
+parameters {i' r k : ℕ}
+parameters {y : fin k}
 
-lemma bitvec_to_nat_to_bitvec (x : fin (succ n))
-: bitvec.to_nat (fin.to_bitvec x) = x.val :=
+-- def x' := x.val
+-- def y' := y.val
+parameters {x' : ℕ}
+
+parameters P' : x' ≤ y.val
+include P'
+
+lemma fin.interval_fits_in_word_size
+: x' + i' % (1 + (y.val - x')) < k :=
 begin
-  rw [fin.to_bitvec,bitvec.to_nat_of_nat,mod_eq_of_lt],
-  apply val_lt_word_size
+  apply @lt_of_lt_of_le _ _ _ (x' + (y.val - x' + 1)),
+  { apply add_lt_add_left, simp,
+    apply nat.mod_lt,
+    rw one_add, apply zero_lt_succ },
+  { rw [← add_assoc,← nat.add_sub_assoc P',nat.add_sub_cancel_left,add_one],
+    apply y.is_lt }
 end
+end coerce
 
-lemma fin_val_bitvec_to_fin
-  {x : bitvec w} (hn : x.to_nat < succ n)
-: (bitvec.to_fin x).val = x.to_nat :=
-by simp [bitvec.to_fin,fin.val_of_nat hn]
-
-protected def of_bitvec_range (x y : fin (succ n))
-: range x.to_bitvec y.to_bitvec → range x y
- | ⟨i,hx,hy⟩ :=
-have hn : bitvec.to_nat i < nat.succ n,
-  by { rw [bitvec.le_def,bitvec_to_nat_to_bitvec] at hy,
-       apply lt_of_le_of_lt hy y.is_lt },
-have hx' : x ≤ bitvec.to_fin i,
-  by { simp [bitvec.le_def,bitvec_to_nat_to_bitvec] at hx,
-       simp [fin.le_def,fin_val_bitvec_to_fin hn,hx], },
-have hy' : bitvec.to_fin i ≤ y,
-  by { simp [bitvec.le_def,bitvec_to_nat_to_bitvec] at hy,
-       simp [fin.le_def,fin_val_bitvec_to_fin hn,hy], },
-⟨bitvec.to_fin i,hx',hy'⟩
+protected def coerce {n : ℕ} (x y : fin (succ n)) (P : x ≤ y)
+  (i : fin (succ n))
+: (x .. y) :=
+let x' := x.val,
+    i' := i.val,
+    r := i' % (y.val - x' + 1) + x' in
+have P' : x.val ≤ y.val,
+  by { rw ← le_def, apply P },
+have Hx : x ≤ fin.of_nat r,
+  begin
+    unfold_local r,
+    simp [fin.le_def,fin.val_of_nat_eq_mod],
+    rw [mod_eq_of_lt],
+    { apply nat.le_add_right },
+    apply fin.interval_fits_in_word_size,
+    unfold_locals x',
+    rw ← fin.le_def, apply P
+  end,
+have Hy : fin.of_nat r ≤ y,
+  begin
+    unfold_local r,
+    rw [fin.le_def,fin.val_of_nat_eq_mod,mod_eq_of_lt],
+    transitivity (y.val - x') + x',
+    { apply add_le_add_right,
+      apply le_of_lt_succ,
+      rw add_one,
+      apply mod_lt,
+      apply zero_lt_succ },
+    { transitivity x' + (y.val - x'),
+      apply le_of_eq, ac_refl,
+      rw [← nat.add_sub_assoc P',nat.add_sub_cancel_left], },
+    simp, apply fin.interval_fits_in_word_size P',
+  end,
+⟨ fin.of_nat r , Hx , Hy ⟩
 
 protected def random_r (x y : fin (succ n)) (p : x ≤ y) : rand (x .. y) :=
-have x.to_bitvec ≤ y.to_bitvec,
-  by { simp [bitvec.le_def,bitvec_to_nat_to_bitvec],
-       rw ← fin.le_def, apply p },
-of_bitvec_range _ _ <$> @random.random_r (bitvec w) _ _ _ this
-
-protected def random_series_r (x y : fin (succ n)) (p : x ≤ y)
-  (g : generator)
-: stream (x .. y) :=
-have x.to_bitvec ≤ y.to_bitvec,
-  by { simp [bitvec.le_def,bitvec_to_nat_to_bitvec],
-       rw ← fin.le_def, apply p },
-stream.map (of_bitvec_range _ _) $ @random.random_series_r (bitvec w) _ _ _ this g
+fin.coerce _ _ p <$> fin.random
 
 end fin
 end fin
@@ -575,19 +574,56 @@ end fin
 instance fin_random (n : ℕ) : random (fin (succ n)) :=
 { to_has_le := by apply_instance
 , random := fin.random
-, random_r := λ x y p, @fin.random_r n x y p
-, random_series := fin.random_series
-, random_series_r := λ x y p, @fin.random_series_r n x y p }
+, random_r := λ x y p, @fin.random_r n x y p }
+
+open nat
+
+def random_fin_of_pos : ∀ (n : ℕ) (h : 0 < n), random (fin n)
+ | (succ n) _ := fin_random _
+ | 0 h := false.elim (not_lt_zero _ h)
 
 section
 open stream
+
 variable [io.interface]
+def try_bitvec_random : io unit := do
+put_str_ln "",
+y ← io.mk_generator,
+let w := succ $ 31,
+let i : bitvec w := 2,
+let j : bitvec w := 100000,
+print_ln y,
+x ← (io.random : io (bitvec w)), return x.to_nat,
+x ← (io.random_r (i) j : io _), return (x.val.to_nat),
+x ← (io.random_series : io (stream (bitvec w))),
+    return $ map bitvec.to_nat $ approx 10 x,
+x ← (io.random_series_r i j),
+    return $ map (bitvec.to_nat ∘ subtype.val) $ approx 10 x,
+return ()
+
+
 def try_fin_random : io unit := do
 put_str_ln "",
-x ← (io.random : io (fin 10)), print_ln x,
-x ← (io.random_r (2 : fin 10) 7 : io _), print_ln (x.val),
-x ← (io.random_series : io (stream (fin 10))), print_ln $ approx 10 x
+let n := by { apply_normed 2^31 },
+let i : fin (succ n) := fin.of_nat 2,
+let j : fin (succ n) := fin.of_nat 100000,
+have dp : i ≤ j,
+by { unfold_locals i j n,
+     rw [fin.le_def,fin.val_of_nat,fin.val_of_nat]
+     ; [ skip, apply succ_le_succ, apply succ_le_succ ]
+     ; norm_sub_expr ; trivial, }, do
+x ← (io.random : io (fin 10)), print_ln x.val,
+x ← (io.random : io (fin (succ n))), return x,
+x ← (io.random_r i j : io _), print_ln (x.val),
+x ← (io.random_series : io (stream (fin (succ n)))), return $ approx 10 x,
+x ← (io.random_series_r i j), return $ map subtype.val $ approx 10 x,
+return ()
 
 end
 
-run_cmd tactic.run_io @try_fin_random
+run_cmd do
+  tactic.timetac "fin_random:    " (tactic.run_io @try_fin_random),
+  tactic.timetac "bitvec_random: " (tactic.run_io @try_bitvec_random)
+
+-- fin_random:     46.1ms
+-- bitvec_random:  785ms

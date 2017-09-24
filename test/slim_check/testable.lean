@@ -103,6 +103,13 @@ def test_forall_in_list (var : string) [∀ x, testable (β x)] [has_to_string �
        end
     end ⟩
 
+def combine_testable (p : Prop)
+  (t : list $ testable p) (h : 0 < t.length)
+: testable p :=
+⟨ have 0 < length (map (@testable.run p) t),
+    by { rw [length_map], apply h },
+  one_of (list.map (@testable.run _) t) this ⟩
+
 def var_testable [has_to_string α] [arbitrary α] [∀ x, testable (β x)]
   (var : option string := none)
 : testable (Π x : α, β x) :=
