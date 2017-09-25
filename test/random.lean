@@ -3,9 +3,9 @@ import data.bitvec
 import data.stream
 import util.data.list
 import util.data.fin
-import util.meta.tactics
+import util.meta.tactic
 
-import data.norm_num
+import util.data.norm_num
 
 import algebra.group_power
 
