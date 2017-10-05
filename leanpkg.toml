@@ -4,4 +4,4 @@ version = "0.1"
 lean_version = "master"
 
 [dependencies]
-lean-lib = {git = "https://github.com/unitb/lean-lib", rev = "6ef489d4e9d4dbfdfc2513d4b0bd364731d80ca9"}
+lean-lib = {git = "https://github.com/unitb/lean-lib", rev = "bce5bdb911594d68b99c245482a41df92a3e2471"}
