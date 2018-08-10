@@ -1,62 +1,66 @@
 import ...test.random
 
+import system.random
+import test.slim_check.liftable
+
 universes u v
 
-def gen (α : Type u) := ℕ → rand α
+@[reducible]
+def gen (α : Type u) := reader_t (ulift ℕ) rand α
 
-namespace gen
+-- namespace gen
 
-variables {α β γ : Type u}
+-- variables {α β γ : Type u}
 
-protected def pure (x : α) : gen α :=
-λ _, pure x
+-- protected def pure (x : α) : gen α :=
+-- λ _, pure x
 
-protected def bind (x : gen α) (f : α → gen β) : gen β
- | sz := do
-i ← x sz,
-f i sz
+-- protected def bind (x : gen α) (f : α → gen β) : gen β
+--  | sz := do
+-- i ← x sz,
+-- f i sz
 
-instance : has_bind gen :=
-⟨ @gen.bind ⟩
+-- instance : has_bind gen :=
+-- ⟨ @gen.bind ⟩
 
-instance : has_pure gen :=
-⟨ @gen.pure ⟩
+-- instance : has_pure gen :=
+-- ⟨ @gen.pure ⟩
 
-lemma bind_assoc (x : gen α) (f : α → gen β) (g : β → gen γ)
-: x >>= f >>= g = x >>= (λ i, f i >>= g) :=
-begin
-  funext sz,
-  simp [has_bind.bind],
-  simp [gen.bind,monad.bind_assoc],
-end
+-- lemma bind_assoc (x : gen α) (f : α → gen β) (g : β → gen γ)
+-- : x >>= f >>= g = x >>= (λ i, f i >>= g) :=
+-- begin
+--   funext sz,
+--   simp [has_bind.bind],
+--   simp [gen.bind,monad.bind_assoc],
+-- end
 
-lemma pure_bind (x : α) (f : α → gen β)
-: pure x >>= f = f x :=
-begin
-  funext i,
-  simp [has_bind.bind],
-  simp [gen.bind,monad.pure_bind],
-  refl
-end
+-- lemma pure_bind (x : α) (f : α → gen β)
+-- : pure x >>= f = f x :=
+-- begin
+--   funext i,
+--   simp [has_bind.bind],
+--   simp [gen.bind,monad.pure_bind],
+--   refl
+-- end
 
-lemma id_map (x : gen α)
-: x >>= pure ∘ id = x :=
-begin
-  funext i,
-  simp [has_bind.bind,function.comp,pure,has_pure.pure],
-  simp [gen.bind,gen.pure],
-  rw monad.bind_pure,
-  exact α,
-end
+-- lemma id_map (x : gen α)
+-- : x >>= pure ∘ id = x :=
+-- begin
+--   funext i,
+--   simp [has_bind.bind,function.comp,pure,has_pure.pure],
+--   simp [gen.bind,gen.pure],
+--   rw monad.bind_pure,
+--   exact α,
+-- end
 
-end gen
+-- end gen
 
-instance : monad gen :=
-{ pure := @gen.pure
-, bind := @gen.bind
-, bind_assoc := @gen.bind_assoc
-, pure_bind  := @gen.pure_bind
-, id_map := @gen.id_map }
+-- instance : monad gen :=
+-- { pure := @gen.pure
+-- , bind := @gen.bind
+-- , bind_assoc := @gen.bind_assoc
+-- , pure_bind  := @gen.pure_bind
+-- , id_map := @gen.id_map }
 
 variable (α : Type u)
 
@@ -65,12 +69,12 @@ section random
 variable [random α]
 
 def choose_any : gen α :=
-λ _, random.random α
+⟨ λ _, random.random α _ ⟩
 
 variables {α}
 
 def choose (x y : α) (p : x ≤ y . check_range) : gen (x .. y) :=
-λ _, random.random_r x y p
+⟨ λ _, random.random_r _ x y p ⟩
 
 end random
 
@@ -88,36 +92,20 @@ open nat
 namespace gen
 
 variable {α}
-def up (x : gen α) : gen (ulift.{v} α) :=
-λ sz g, prod.rec_on (x sz g) (prod.mk ∘ ulift.up)
 
-def down (x : gen (ulift.{v} α)) : gen α :=
-λ sz g, prod.rec_on (x sz g) (prod.mk ∘ ulift.down)
-
-lemma up_down {α : Type u} (b : gen $ ulift.{v} α)
-: up (down b) = b :=
-begin
-  funext x y, simp [up,down],
-  destruct (b x y),
-  intros z g h, rw h,
-  change (_,_) = _,
-  rw ulift.up_down
-end
-
-lemma down_up {α : Type u} (a : gen α)
-: down (up a) = a :=
-begin
-  funext i j, simp [up,down],
-  destruct (a i j),
-  intros z g h, rw h,
-end
+instance : liftable gen.{u} gen.{v} :=
+reader_t.liftable' (equiv.ulift.trans equiv.ulift.symm)
+set_option pp.universes true
+-- begin
+--    reader_t.liftable
+-- end
 
 end gen
 
 variable {α}
 
 def sized (cmd : ℕ → gen α) : gen α :=
-λ sz, cmd sz sz
+⟨ λ ⟨sz⟩, (cmd sz).run ⟨sz⟩ ⟩
 
 def vector_of : ∀ (n : ℕ) (cmd : gen α), gen (vector α n)
  | 0 _ := return vector.nil
@@ -125,13 +113,13 @@ def vector_of : ∀ (n : ℕ) (cmd : gen α), gen (vector α n)
 
 def list_of (cmd : gen α) : gen (list α) :=
 sized $ λ sz, do
-⟨ n ⟩ ← gen.up $ choose_nat 0 sz,
-v ← vector_of n.val cmd,
-return v.to_list
+do ⟨ n ⟩ ← liftable.up' $ choose_nat 0 sz,
+   v ← vector_of n.val cmd,
+   return v.to_list
 
 open ulift
 
 def one_of (xs : list (gen α)) (pos : 0 < xs.length) : gen α :=
 have _inst : random _ := random_fin_of_pos _ pos, do
-n ← gen.up $ @choose_any (fin xs.length) _inst,
+n ← liftable.up' $ @choose_any (fin xs.length) _inst,
 list.nth_le xs (down n).val (down n).is_lt

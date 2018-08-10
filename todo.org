@@ -1,12 +1,11 @@
 
 todo
-
-* options
+ * TODO options
    * multiple types (Int, nat, list int)
    * first seed
    * max tests
    * max give up
-* shrinking
-* model checking
-* use `fin` instead of `bitvec` in generator
-* evaluate `rand` in proof terms
+ * shrinking
+ * model checking
+ * use `fin` instead of `bitvec` in generator
+ * evaluate `rand` in proof terms

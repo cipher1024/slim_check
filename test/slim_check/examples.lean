@@ -8,11 +8,11 @@ by expect_failure { slim_check }
 
 open slim_check
 
-run_cmd tactic.run_io $ @testable.check (∀ n : ℕ, n > n+1)  _
-run_cmd tactic.run_io $ @testable.check (∀ n m : ℕ, n ≤ m)  _
-run_cmd tactic.run_io $ @testable.check (∀ n m : ℕ, 2*m + n < 100)  _
-run_cmd tactic.run_io $ @testable.check (∀ n m : ℕ, 0 ≤ m + n)  _
-run_cmd tactic.run_io $ @testable.check
+run_cmd tactic.unsafe_run_io $ @testable.check (∀ n : ℕ, n > n+1)  _
+run_cmd tactic.unsafe_run_io $ @testable.check (∀ n m : ℕ, n ≤ m)  _
+run_cmd tactic.unsafe_run_io $ @testable.check (∀ n m : ℕ, 2*m + n < 100)  _
+run_cmd tactic.unsafe_run_io $ @testable.check (∀ n m : ℕ, 0 ≤ m + n)  _
+run_cmd tactic.unsafe_run_io $ @testable.check
                      (∀ (n : ℤ) (xs : list ℤ) x,
                                  x ∈ xs → x < n)  _
 
@@ -31,7 +31,7 @@ variables (α : Type)
 variables [has_add α] [has_one α]
 
 example : (∀ (xs : list α), xs ≠ [] → ∃ (x ∈ xs), x = (10 : α)) :=
-by expect_failure { slim_check }
+by  { slim_check, }
 
 example : (∀ (xs : list α), ∃ (x ∈ xs), ∃ y ∈ xs, x ≠ y) :=
 by expect_failure { slim_check }

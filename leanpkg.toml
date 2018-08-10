@@ -1,7 +1,8 @@
 [package]
 name = "slim_check"
 version = "0.1"
-lean_version = "master"
+lean_version = "3.4.1"
 
 [dependencies]
-lean-lib = {git = "https://github.com/unitb/lean-lib", rev = "bce5bdb911594d68b99c245482a41df92a3e2471"}
+lean-lib = {git = "https://github.com/unitb/lean-lib", rev = "b88c649b9ed1bce043114c532f0a98df791c57a9"}
+mathlib = {git = "https://github.com/cipher1024/mathlib", rev = "c939f90dbdde995cf842b9251ab495b4041069b4"}

@@ -113,9 +113,9 @@ def combine_testable (p : Prop)
 def var_testable [has_to_string α] [arbitrary α] [∀ x, testable (β x)]
   (var : option string := none)
 : testable (Π x : α, β x) :=
-⟨ gen.down $ do
+⟨ liftable.down' $ do
   x ← arby α,
-  gen.up (do
+  liftable.up' (do
     r ← testable.run (β x),
     return $ match var with
      | none := add_to_counter_example (to_string x) ($ x) r
@@ -133,8 +133,6 @@ section io
 
 variable (α' : Prop)
 variable [testable α']
-
-variable [io.interface]
 
 open nat
 
@@ -157,11 +155,11 @@ def give_up_once (x : ℕ) : test_result α' → test_result α'
  | (failure Hce xs) := failure Hce xs
 
 variable (α')
-
+#check testable.run
 def testable.run_suite_aux : test_result α' → ℕ → rand (test_result α')
  | r 0 := return r
  | r (succ n) := do
-x ← retry (testable.run α' (99 - n)) 10,
+x ← retry ( (testable.run α').run ⟨ 99 - n ⟩) 10,
 match x with
  | (success (psum.inl ())) := testable.run_suite_aux r n
  | (success (psum.inr Hp)) := return $ success (psum.inr Hp)
