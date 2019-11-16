@@ -1,0 +1,10 @@
+[package]
+name = "slim_check"
+lean_version = "3.4.2"
+lib_snapshot = "2019-10"
+
+[dependencies]
+lean-lib = "https://github.com/unitb/lean-lib"
+mathlib = "https://github.com/leanprover-community/mathlib"
+
+[extra_deps]
