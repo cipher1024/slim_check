@@ -29,6 +29,33 @@ end
 meta def applye (e : pexpr) : tactic unit := do
 () <$ (to_expr e >>= tactic.apply)
 
+meta def synth_def_name : tactic unit :=
+do n ← decl_name,
+   tactic.exact `(n)
+
+meta def on_error {α} (tac : tactic α)
+  (hdlr : option (unit → format) → option pos → tactic unit) : tactic α
+| s := match tac s with
+       | x@(result.success _ _) := x
+       | (result.exception msg pos s') := (hdlr msg pos >> result.exception msg pos) s'
+       end
+
+meta def trace_scope' (tag : pformat) {α} (tac : tactic α) (n : name . synth_def_name) : tactic α :=
+do tag ← tag,
+   let tag := if ¬ tag.is_nil then format!"{n} ({tag})" else to_fmt n,
+   trace!"begin {tag}",
+   on_error tac (λ msg pos,
+     let msg := msg.get_or_else (λ _, to_fmt "⟨empty⟩") (),
+         pos := match pos with
+                | none := to_fmt ""
+                | (some val) := to_fmt val
+                end in
+     trace!"failed {tag} {pos}\n  {msg}" >> trace_state) <*
+   trace!"end {tag}"
+
+meta def trace_scope {α} (tac : tactic α) (n : name . synth_def_name) : tactic α :=
+trace_scope' (pure $ to_fmt "") tac n
+
 /-- build an instance of testable for the given proposition
   -/
 meta def is_testable : tactic unit := do
@@ -43,20 +70,15 @@ match e with
       applye ``(@slim_check.test_one _ _ %%h _),
       is_testable
    else do
-    trace "there",
     p ← is_prop d,
     let var := reflect $ to_string n,
     let mk_testable_inst := (do
           h ← to_expr ``(testable %%t) >>= λ e, tactic.assert `h (expr.pi n bi d e),
-          solve1 (tactic.intro1 >> target >>= trace >> is_testable)),
+          solve1 (tactic.intro1 >> is_testable)),
     if p then do
-       trace "A",
        mk_testable_inst,
-       trace "mid A",
-       tactic.applyc `slim_check.imp_dec_testable,
-       trace "end A"
+       tactic.applyc `slim_check.imp_dec_testable
     else if d = `(Type) then do
-      trace "B",
       let t' := expr.instantiate_local n `(ℤ) t,
       h ← to_expr ``(testable %%t') >>= tactic.assert `h,
       solve1 is_testable,
@@ -77,29 +99,23 @@ match e with
        (  (applye ``(slim_check.test_forall_in_list _ _ %%var)  ; apply_instance)
          <|>
           (applye ``(slim_check.var_testable _ _ (some %%var)) ; apply_instance))
- | _ := trace_error $ tactic.applyc `slim_check.de_testable
+ | _ := trace_error $ tactic.applyc ``slim_check.de_testable
 end)
-<|> trace_error (tactic.applyc `slim_check.de_testable)
+<|> trace_error (tactic.applyc ``slim_check.de_testable)
 
 open slim_check.test_result nat
 
-meta def slim_check : tactic unit :=
-do n ← revert_all,
+meta def slim_check (bound : ℕ := 100) : tactic unit :=
+do unfreeze_local_instances,
+   n ← revert_all,
    t ← target,
    p ← is_prop t,
    when (¬ p) (fail "expecting a proposition"),
-   trace "so far",
    cl ←  to_expr ``(testable %%t),
    hinst ← prod.snd <$> tactic.solve_aux cl is_testable,
-   trace "so far",
-   expr.has_meta_var <$> (tactic.result >>= instantiate_mvars) >>= trace,
    e ← to_expr ``(psigma.mk %%t %%hinst : Σ' t', testable t'),
-   expr.has_meta_var <$> (tactic.result >>= instantiate_mvars) >>= trace,
    ⟨t',hinst⟩ ← eval_expr (psigma testable) e,
-   expr.has_meta_var <$> (tactic.result >>= instantiate_mvars) >>= trace,
-   r ← unsafe_run_io (@testable.check t' hinst),
-   expr.has_meta_var <$> (tactic.result >>= instantiate_mvars) >>= trace,
-   trace t,
+   r ← unsafe_run_io (@testable.check t' hinst bound),
    match r with
     | (success (psum.inl ())) := admit
     | (success (psum.inr p)) := do `[apply @of_as_true %%t, exact trivial]
@@ -114,10 +130,10 @@ do n ← revert_all,
         , "" ] ++
         xs ++
         [ "-------------------" ]
-    | (gave_up n) := trace ("Gave up " ++ repr n ++ " time(s)") >> admit
-   end,
-   expr.has_meta_var <$> (tactic.result >>= instantiate_mvars) >>= trace
-
-open interaction_monad.result.
+    | (gave_up n) :=
+      if n ≥ bound
+      then fail ("Gave up " ++ repr n ++ " time(s)")
+      else trace ("Gave up " ++ repr n ++ " time(s)") >> admit
+   end
 
 end tactic.interactive

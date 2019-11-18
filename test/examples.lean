@@ -8,13 +8,13 @@ by expect_failure { slim_check }
 
 open slim_check
 
-run_cmd tactic.unsafe_run_io $ @testable.check (∀ n : ℕ, n > n+1)  _
-run_cmd tactic.unsafe_run_io $ @testable.check (∀ n m : ℕ, n ≤ m)  _
-run_cmd tactic.unsafe_run_io $ @testable.check (∀ n m : ℕ, 2*m + n < 100)  _
-run_cmd tactic.unsafe_run_io $ @testable.check (∀ n m : ℕ, 0 ≤ m + n)  _
+run_cmd tactic.unsafe_run_io $ @testable.check (∀ n : ℕ, n > n+1) _ 100
+run_cmd tactic.unsafe_run_io $ @testable.check (∀ n m : ℕ, n ≤ m)  _ 100
+run_cmd tactic.unsafe_run_io $ @testable.check (∀ n m : ℕ, 2*m + n < 100)  _ 100
+run_cmd tactic.unsafe_run_io $ @testable.check (∀ n m : ℕ, 0 ≤ m + n)  _ 100
 run_cmd tactic.unsafe_run_io $ @testable.check
                      (∀ (n : ℤ) (xs : list ℤ) x,
-                                 x ∈ xs → x < n)  _
+                                 x ∈ xs → x < n)  _ 100
 
 example : ∀ n : ℕ, n < n+1 :=
 by slim_check
@@ -28,13 +28,16 @@ n % 2 = 0
 section
 variables (α : Type)
 
-variables [has_add α] [has_one α]
+variables [has_add α] [has_one α] [decidable_eq α]
+
+example : (∀ (xs : list α), 10 ∈ xs → xs ≠ [] → ∃ (x ∈ xs), x = (10 : α)) :=
+by slim_check
 
 example : (∀ (xs : list α), xs ≠ [] → ∃ (x ∈ xs), x = (10 : α)) :=
-by  { slim_check, }
+by expect_failure { slim_check, }
 
 example : (∀ (xs : list α), ∃ (x ∈ xs), ∃ y ∈ xs, x ≠ y) :=
-by expect_failure { slim_check }
+by expect_failure { slim_check } -- remaining meta variables
 
 end
 
@@ -69,6 +72,6 @@ by slim_check
 variables n m : ℕ
 
 example : (false → even m → ¬ even n → even (m+n)) :=
-by slim_check
+by expect_failure { slim_check }
 
 end slim_check.examples

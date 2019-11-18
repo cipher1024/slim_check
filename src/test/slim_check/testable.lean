@@ -131,14 +131,14 @@ instance de_testable {p : Prop} [decidable p] : testable p :=
 
 section io
 
-variable (α' : Prop)
-variable [testable α']
+variable (p : Prop)
+variable [testable p]
 
 open nat
 
-variable {α'}
+variable {p}
 
-def retry (cmd : rand (test_result α')) : ℕ → rand (test_result α')
+def retry (cmd : rand (test_result p)) : ℕ → rand (test_result p)
  | 0 := return $ gave_up 1
  | (succ n) := do
 r ← cmd,
@@ -148,36 +148,36 @@ match r with
  | (gave_up _) := retry n
 end
 
-def give_up_once (x : ℕ) : test_result α' → test_result α'
+def give_up_once (x : ℕ) : test_result p → test_result p
  | (success (psum.inl ())) := gave_up x
  | (success (psum.inr p))  := success (psum.inr p)
  | (gave_up n) := gave_up (n+x)
  | (failure Hce xs) := failure Hce xs
 
-variable (α')
-#check testable.run
-def testable.run_suite_aux : test_result α' → ℕ → rand (test_result α')
+variable (p)
+
+def testable.run_suite_aux : test_result p → ℕ → rand (test_result p)
  | r 0 := return r
- | r (succ n) := do
-x ← retry ( (testable.run α').run ⟨ 99 - n ⟩) 10,
-match x with
- | (success (psum.inl ())) := testable.run_suite_aux r n
- | (success (psum.inr Hp)) := return $ success (psum.inr Hp)
- | (failure Hce xs) := return (failure Hce xs)
- | (gave_up g) := testable.run_suite_aux (give_up_once g r) n
-end
+ | r (succ n) :=
+do x ← retry ( (testable.run p).run ⟨ 99 - n ⟩) 10,
+   match x with
+    | (success (psum.inl ())) := testable.run_suite_aux r n
+    | (success (psum.inr Hp)) := return $ success (psum.inr Hp)
+    | (failure Hce xs) := return (failure Hce xs)
+    | (gave_up g) := testable.run_suite_aux (give_up_once g r) n
+   end
 
-def testable.run_suite :=
-testable.run_suite_aux α' (success $ psum.inl ()) 100
+def testable.run_suite (bound : ℕ := 100) :=
+testable.run_suite_aux p (success $ psum.inl ()) bound
 
-def testable.check : io (test_result α') :=
-io.run_rand (testable.run_suite α')
+def testable.check (bound : ℕ := 100) : io (test_result p) :=
+io.run_rand (testable.run_suite p bound)
 
-def testable.check' : io bool := do
-x ← io.run_rand (testable.run_suite α'),
+def testable.check' (bound : ℕ := 100) : io bool := do
+x ← io.run_rand (testable.run_suite p bound),
 match x with
  | (success _) := return tt
- | (gave_up n) := io.put_str_ln ("Gave up " ++ repr n ++ " times") >> return tt
+ | (gave_up n) := io.put_str_ln ("Gave up " ++ repr n ++ " times") >> return ff
  | (failure _ xs) := do
    io.put_str_ln "\n===================",
    io.put_str_ln "Found problems!",

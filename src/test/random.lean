@@ -1,4 +1,3 @@
-
 import data.bitvec
 import data.stream
 import util.data.list
@@ -374,7 +373,7 @@ begin
     clear P' i',
     cases y with y Hy,
     unfold bitvec.to_nat vector.to_list subtype.val bitvec.bits_to_nat,
-    rw [foldl_eq_foldr',← Hy, ← length_reverse],
+    rw [← reverse_reverse y, foldl_reverse,← Hy,← length_reverse],
     generalize : reverse y = z,
     clear x' x y' Hy y n,
     induction z with x xs,
@@ -389,7 +388,7 @@ begin
         rw [← nat.add_succ,← nat.add_succ,one_add,← nat.succ_add,mul_comm,← two_mul],
         apply nat.mul_le_mul_left,
         simp [flip,bitvec.add_lsb] at z_ih,
-        apply z_ih } } },
+        apply z_ih } }, },
 end
 end coerce
 
@@ -500,7 +499,7 @@ begin
     have h' := div_two_round_up (succ n) h,
     specialize IH ((succ n + 1) / 2) h', clear h h',
     rw [succ_add,← add_succ] at *,
-    simp at *,
+    simp only [-succ_pos', add_zero] at *,
     have h : (n + 2 * 1) / 2 = n / 2 + 1 :=
        add_mul_div_left _ _ dec_trivial,
     rw [mul_one] at h,

@@ -1,4 +1,4 @@
-import ...test.random
+import test.random
 
 import system.random
 import test.slim_check.liftable
@@ -78,14 +78,13 @@ def choose (x y : α) (p : x ≤ y . check_range) : gen (x .. y) :=
 
 end random
 
-open nat
+open nat (hiding choose)
 
 def choose_nat (x y : ℕ) (p : x ≤ y . check_range) : gen (x .. y) := do
 ⟨z,h⟩ ← @choose (fin $ succ y) _ ⟨x,succ_le_succ p⟩ ⟨y,lt_succ_self _⟩ p,
 have h' : x ≤ z.val ∧ z.val ≤ y,
   by { simp [fin.le_def] at h, apply h },
 return ⟨z.val,h'⟩
-
 
 open nat
 
